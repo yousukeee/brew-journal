@@ -180,6 +180,22 @@
     .empty { text-align: center; padding: 48px 20px; color: #5a4a32; font-size: 13px; letter-spacing: 1px; }
     .empty-icon { font-size: 36px; margin-bottom: 12px; }
 
+    /* ── Flavor Radar ── */
+    .flavor-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px;
+      margin-bottom: 8px;
+    }
+    .flavor-row { display: flex; flex-direction: column; gap: 4px; }
+    .flavor-label-row { display: flex; justify-content: space-between; align-items: center; }
+    .flavor-name { font-size: 11px; letter-spacing: 1px; color: var(--text-muted); }
+    .flavor-val { font-size: 12px; color: var(--accent); font-weight: bold; }
+    input[type=range] {
+      width: 100%; height: 3px; padding: 0;
+      background: var(--border); border: none; border-radius: 2px;
+      accent-color: var(--accent); cursor: pointer;
+    }
+    .radar-wrap { display: flex; justify-content: center; margin: 8px 0 4px; }
+
     /* page show/hide */
     .page { display: none; }
     .page.active { display: block; }
@@ -242,7 +258,13 @@
       </div>
 
       <div class="form-group">
-        <label class="field-label">評価</label>
+        <label class="field-label">フレーバー評価</label>
+        <div class="radar-wrap"><svg id="form-radar" width="180" height="180"></svg></div>
+        <div class="flavor-grid" id="flavor-sliders"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="field-label">総合評価</label>
         <div class="stars" id="stars"></div>
       </div>
 
@@ -280,6 +302,85 @@ const STORAGE_KEY = 'coffee-brew-records-v1';
 let records = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
 let currentRating = 3;
 let expandedId = null;
+
+// ── Flavor ──
+const FLAVORS = ['酸味','甘み','苦味','コク','香り'];
+let currentFlavor = { '酸味':3, '甘み':3, '苦味':3, 'コク':3, '香り':3 };
+
+function renderFlavorSliders() {
+  const el = document.getElementById('flavor-sliders');
+  el.innerHTML = FLAVORS.map(f => `
+    <div class="flavor-row">
+      <div class="flavor-label-row">
+        <span class="flavor-name">${f}</span>
+        <span class="flavor-val" id="fv-${f}">${currentFlavor[f]}</span>
+      </div>
+      <input type="range" min="1" max="5" step="1" value="${currentFlavor[f]}"
+        oninput="onFlavor('${f}', this.value)" />
+    </div>`).join('');
+  drawRadar('form-radar', currentFlavor, 90);
+}
+
+function onFlavor(name, val) {
+  currentFlavor[name] = parseInt(val);
+  document.getElementById('fv-' + name).textContent = val;
+  drawRadar('form-radar', currentFlavor, 90);
+}
+
+// ── Radar Chart (SVG) ──
+function polarToXY(cx, cy, r, angleRad) {
+  return [cx + r * Math.sin(angleRad), cy - r * Math.cos(angleRad)];
+}
+
+function drawRadar(svgId, flavor, size) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  const cx = size, cy = size;
+  const maxR = size * 0.72;
+  const n = FLAVORS.length;
+  const levels = 5;
+  let html = '';
+
+  // grid rings
+  for (let l = 1; l <= levels; l++) {
+    const r = (maxR / levels) * l;
+    const pts = FLAVORS.map((_, i) => {
+      const [x, y] = polarToXY(cx, cy, r, (2 * Math.PI * i) / n);
+      return `${x},${y}`;
+    }).join(' ');
+    html += `<polygon points="${pts}" fill="none" stroke="#3a2e22" stroke-width="1"/>`;
+  }
+
+  // axes + labels
+  FLAVORS.forEach((f, i) => {
+    const angle = (2 * Math.PI * i) / n;
+    const [x2, y2] = polarToXY(cx, cy, maxR, angle);
+    html += `<line x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}" stroke="#3a2e22" stroke-width="1"/>`;
+    const [lx, ly] = polarToXY(cx, cy, maxR + 16, angle);
+    html += `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle"
+      font-size="10" fill="#7a6a52" font-family="Georgia,serif">${f}</text>`;
+  });
+
+  // data polygon
+  const pts = FLAVORS.map((f, i) => {
+    const r = (maxR / levels) * (flavor[f] || 1);
+    const [x, y] = polarToXY(cx, cy, r, (2 * Math.PI * i) / n);
+    return `${x},${y}`;
+  }).join(' ');
+  html += `<polygon points="${pts}" fill="#C8832A" fill-opacity="0.25" stroke="#C8832A" stroke-width="2"/>`;
+
+  // dots
+  FLAVORS.forEach((f, i) => {
+    const r = (maxR / levels) * (flavor[f] || 1);
+    const [x, y] = polarToXY(cx, cy, r, (2 * Math.PI * i) / n);
+    html += `<circle cx="${x}" cy="${y}" r="4" fill="#C8832A"/>`;
+  });
+
+  svg.setAttribute('viewBox', `0 0 ${size*2} ${size*2}`);
+  svg.innerHTML = html;
+}
+
+renderFlavorSliders();
 
 // ── Stars ──
 function renderStars() {
@@ -341,6 +442,7 @@ function saveRecord() {
     clicks: parseInt(document.getElementById('f-clicks').value) || null,
     notes: document.getElementById('f-notes').value,
     rating: currentRating,
+    flavor: { ...currentFlavor },
   };
 
   records.unshift(record);
@@ -357,6 +459,8 @@ function saveRecord() {
   document.getElementById('f-notes').value = '';
   document.getElementById('ratio-badge').style.display = 'none';
   currentRating = 3; renderStars();
+  currentFlavor = { '酸味':3, '甘み':3, '苦味':3, 'コク':3, '香り':3 };
+  renderFlavorSliders();
 
   const btn = document.getElementById('submit-btn');
   btn.textContent = '✓ 保存しました'; btn.classList.add('saved');
@@ -395,6 +499,10 @@ function renderHistory() {
           ${ratio}
         </div>
         ${r.notes ? `<div class="card-notes">${r.notes}</div>` : ''}
+        ${r.flavor ? `
+          <div class="radar-wrap" style="margin-top:12px">
+            <svg id="radar-${r.id}" width="160" height="160"></svg>
+          </div>` : ''}
         <button class="delete-btn" onclick="deleteRecord(${r.id})">削除</button>
       </div>` : '';
     return `
@@ -409,6 +517,11 @@ function renderHistory() {
         ${body}
       </div>`;
   }).join('');
+
+  // draw radar charts for expanded cards
+  records.filter(r => r.flavor && expandedId === r.id).forEach(r => {
+    drawRadar('radar-' + r.id, r.flavor, 80);
+  });
 }
 
 function toggleCard(id) {
