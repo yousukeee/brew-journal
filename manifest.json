@@ -2,7 +2,7 @@
   "name": "Coffee Brew Journal",
   "short_name": "Brew Journal",
   "description": "コーヒー抽出記録アプリ",
-  "start_url": "/",
+  ""start_url": "/brew-journal/",,
   "display": "standalone",
   "background_color": "#1a120b",
   "theme_color": "#1a120b",
