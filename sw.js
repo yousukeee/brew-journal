@@ -1,4 +1,4 @@
-const CACHE = 'brew-journal-v1';
+const CACHE = 'brew-journal-v3';
 const ASSETS = ['/brew-journal/', '/brew-journal/index.html', '/brew-journal/manifest.json'];
 
 self.addEventListener('install', e => {
