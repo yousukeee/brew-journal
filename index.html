@@ -154,6 +154,22 @@
       padding: 4px 12px; border-radius: 3px;
       font-size: 10px; cursor: pointer; letter-spacing: 1px;
     }
+    .edit-btn {
+      margin-top: 12px; margin-right: 8px; background: none;
+      border: 1px solid var(--border); color: var(--text-muted);
+      padding: 4px 12px; border-radius: 3px;
+      font-size: 10px; cursor: pointer; letter-spacing: 1px;
+    }
+    .edit-banner {
+      background: #2a1f0a; border: 1px solid var(--accent);
+      border-radius: 4px; padding: 10px 14px; margin-bottom: 20px;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; color: var(--accent); letter-spacing: 1px;
+    }
+    .cancel-edit-btn {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 11px; cursor: pointer; text-decoration: underline;
+    }
     .chevron { color: var(--accent); font-size: 11px; }
 
     /* ── Stats ── */
@@ -218,6 +234,10 @@
   <main>
     <!-- ── LOG ── -->
     <div id="page-log" class="page active">
+      <div id="edit-banner" style="display:none" class="edit-banner">
+        <span>✏️ 編集モード</span>
+        <button class="cancel-edit-btn" onclick="cancelEdit()">キャンセル</button>
+      </div>
       <div class="form-group">
         <label class="field-label">コーヒー豆</label>
         <select id="bean-select" onchange="onBeanChange()">
@@ -302,6 +322,7 @@ const STORAGE_KEY = 'coffee-brew-records-v1';
 let records = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
 let currentRating = 3;
 let expandedId = null;
+let editingId = null;
 
 // ── Flavor ──
 const FLAVORS = ['酸味','甘み','苦味','コク','香り'];
@@ -425,12 +446,93 @@ function switchTab(tab) {
   if (tab === 'stats') renderStats();
 }
 
+// ── Edit ──
+function editRecord(id) {
+  const r = records.find(r => r.id === id);
+  if (!r) return;
+  editingId = id;
+
+  // populate form
+  const beanPresets = ['出雲ブレンド','エチオピア イルガチェフェ','コロンビア スプレモ','ケニア AA','グアテマラ アンティグア','ブラジル サントス'];
+  const sel = document.getElementById('bean-select');
+  if (beanPresets.includes(r.bean)) {
+    sel.value = r.bean;
+    document.getElementById('bean-custom').style.display = 'none';
+  } else {
+    sel.value = 'other';
+    document.getElementById('bean-custom').style.display = 'block';
+    document.getElementById('bean-custom').value = r.bean;
+  }
+  document.getElementById('f-bean-amount').value = r.beanAmount || '';
+  document.getElementById('f-water').value = r.waterAmount || '';
+  document.getElementById('f-time').value = r.brewTime || '';
+  document.getElementById('f-clicks').value = r.clicks != null ? r.clicks : '';
+  document.getElementById('f-notes').value = r.notes || '';
+  currentRating = r.rating || 3;
+  currentFlavor = r.flavor ? { ...r.flavor } : { '酸味':3, '甘み':3, '苦味':3, 'コク':3, '香り':3 };
+
+  renderStars();
+  renderFlavorSliders();
+  updateRatio();
+
+  document.getElementById('edit-banner').style.display = 'flex';
+  document.getElementById('submit-btn').textContent = '変更を保存する';
+  switchTab('log');
+  window.scrollTo(0, 0);
+}
+
+function cancelEdit() {
+  editingId = null;
+  document.getElementById('edit-banner').style.display = 'none';
+  document.getElementById('submit-btn').textContent = '記録を保存する';
+  resetForm();
+}
+
+function resetForm() {
+  document.getElementById('bean-select').value = '';
+  document.getElementById('bean-custom').value = '';
+  document.getElementById('bean-custom').style.display = 'none';
+  document.getElementById('f-bean-amount').value = '';
+  document.getElementById('f-water').value = '';
+  document.getElementById('f-time').value = '';
+  document.getElementById('f-clicks').value = '';
+  document.getElementById('f-notes').value = '';
+  document.getElementById('ratio-badge').style.display = 'none';
+  currentRating = 3; renderStars();
+  currentFlavor = { '酸味':3, '甘み':3, '苦味':3, 'コク':3, '香り':3 };
+  renderFlavorSliders();
+}
+
 // ── Save ──
 function saveRecord() {
   const beanSel = document.getElementById('bean-select').value;
   if (!beanSel) { alert('コーヒー豆を選択してください'); return; }
   const bean = beanSel === 'other' ? document.getElementById('bean-custom').value : beanSel;
   if (!bean) { alert('豆の名前を入力してください'); return; }
+
+  if (editingId) {
+    // update existing
+    records = records.map(r => r.id === editingId ? {
+      ...r, bean,
+      beanAmount: parseFloat(document.getElementById('f-bean-amount').value) || null,
+      waterAmount: parseFloat(document.getElementById('f-water').value) || null,
+      brewTime: parseFloat(document.getElementById('f-time').value) || null,
+      clicks: parseInt(document.getElementById('f-clicks').value) || null,
+      notes: document.getElementById('f-notes').value,
+      rating: currentRating,
+      flavor: { ...currentFlavor },
+    } : r);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    editingId = null;
+    document.getElementById('edit-banner').style.display = 'none';
+    document.getElementById('submit-btn').textContent = '記録を保存する';
+    resetForm();
+    const btn = document.getElementById('submit-btn');
+    btn.textContent = '✓ 更新しました'; btn.classList.add('saved');
+    setTimeout(() => { btn.textContent = '記録を保存する'; btn.classList.remove('saved'); }, 2000);
+    switchTab('history');
+    return;
+  }
 
   const record = {
     id: Date.now(),
@@ -447,20 +549,7 @@ function saveRecord() {
 
   records.unshift(record);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-
-  // reset
-  document.getElementById('bean-select').value = '';
-  document.getElementById('bean-custom').value = '';
-  document.getElementById('bean-custom').style.display = 'none';
-  document.getElementById('f-bean-amount').value = '';
-  document.getElementById('f-water').value = '';
-  document.getElementById('f-time').value = '';
-  document.getElementById('f-clicks').value = '';
-  document.getElementById('f-notes').value = '';
-  document.getElementById('ratio-badge').style.display = 'none';
-  currentRating = 3; renderStars();
-  currentFlavor = { '酸味':3, '甘み':3, '苦味':3, 'コク':3, '香り':3 };
-  renderFlavorSliders();
+  resetForm();
 
   const btn = document.getElementById('submit-btn');
   btn.textContent = '✓ 保存しました'; btn.classList.add('saved');
@@ -503,7 +592,10 @@ function renderHistory() {
           <div class="radar-wrap" style="margin-top:12px">
             <svg id="radar-${r.id}" width="160" height="160"></svg>
           </div>` : ''}
-        <button class="delete-btn" onclick="deleteRecord(${r.id})">削除</button>
+        <div style="margin-top:12px">
+          <button class="edit-btn" onclick="editRecord(${r.id})">編集</button>
+          <button class="delete-btn" onclick="deleteRecord(${r.id})">削除</button>
+        </div>
       </div>` : '';
     return `
       <div class="card">
